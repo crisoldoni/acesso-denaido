@@ -1,10 +1,10 @@
 FROM php:8.3-fpm
 
-# set your user name, ex: user=carlos
-ARG user=cris
+# Argumentos para configurar o usuário
+ARG user=laravel
 ARG uid=1000
 
-# Install system dependencies
+# Instala dependências do sistema
 RUN apt-get update && apt-get install -y \
     git \
     curl \
@@ -12,31 +12,46 @@ RUN apt-get update && apt-get install -y \
     libonig-dev \
     libxml2-dev \
     zip \
-    unzip
+    unzip \
+    libzip-dev \
+    libcurl4-openssl-dev \
+    libssl-dev \
+    libpq-dev \
+    libjpeg-dev \
+    libfreetype6-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install pdo pdo_mysql mbstring exif pcntl bcmath gd zip sockets
 
-# Clear cache
+# Limpa cache
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install PHP extensions
-RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd sockets
+# Instala o Redis
+RUN pecl install -o -f redis \
+    && rm -rf /tmp/pear \
+    && docker-php-ext-enable redis
 
-# Get latest Composer
+# Instala o Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Create system user to run Composer and Artisan Commands
-RUN useradd -G www-data,root -u $uid -d /home/$user $user
-RUN mkdir -p /home/$user/.composer && \
-    chown -R $user:$user /home/$user
+# Cria o usuário
+RUN useradd -G www-data,root -u $uid -d /home/$user $user \
+    && mkdir -p /home/$user/.composer \
+    && chown -R $user:$user /home/$user
 
-# Install redis
-RUN pecl install -o -f redis \
-    &&  rm -rf /tmp/pear \
-    &&  docker-php-ext-enable redis
-
-# Set working directory
+# Define diretório de trabalho
 WORKDIR /var/www
 
-# Copy custom configurations PHP
+# Copia configurações PHP personalizadas (opcional)
 COPY docker/php/custom.ini /usr/local/etc/php/conf.d/custom.ini
 
+# Copia arquivos da aplicação Laravel (você pode ignorar essa parte no .dockerignore)
+COPY . /var/www
+
+# Ajusta permissões para diretórios usados pelo Laravel
+RUN chown -R $user:www-data /var/www \
+    && find /var/www -type f -exec chmod 664 {} \; \
+    && find /var/www -type d -exec chmod 775 {} \; \
+    && chown -R $user:www-data /var/www/storage /var/www/bootstrap/cache
+
+# Define o usuário padrão
 USER $user
